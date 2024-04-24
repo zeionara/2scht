@@ -9,6 +9,7 @@ from .Thread import Thread
 DEFAULT_PORT = 1217
 CATALOG_URL = 'https://2ch.hk/b/catalog.json'
 N_THREADS_PER_RESPONSE = 5
+N_CHARS_PER_RESPONSE = 5000
 
 
 class Server:
@@ -78,11 +79,21 @@ class Server:
                         self._offset = min(len(self._threads) - N_THREADS_PER_RESPONSE, self._offset + N_THREADS_PER_RESPONSE)
 
                     if target_item is not None:
-                        thread = [self._threads[target_item].title_text] + [
+                        thread_ = [self._threads[target_item].title_text] + [
                             comment
                             for topic in self.fetcher.fetch(self._threads[target_item].link, verbose = True)
                             for comment in topic.comments
                         ]
+                        thread = []
+
+                        n_chars = 0
+
+                        for comment in thread_:
+                            n_chars += len(comment)
+                            if n_chars < N_CHARS_PER_RESPONSE:
+                                thread.append(comment)
+                            else:
+                                break
 
                         print(len(thread), thread)
 
