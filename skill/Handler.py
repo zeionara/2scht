@@ -19,15 +19,16 @@ class Handler(ABC):
         self.n_threads_per_response = n_threads_per_response
         self.n_chars_per_response = n_chars_per_response
         self.timeout = timeout
-        self.last_batch_size = None
 
         self._fetcher = Fetcher()
+        self._last_batch_size = None
         self._threads = None
         self._offset = None
-        self._first_call = True
 
     def list_threads(self, reverse: bool = True, skip_first_n: int = 0):
         response = get(CATALOG_URL, timeout = self.timeout)
+
+        # print(response.content)
 
         if (status_code := response.status_code) != HTTP_SUCCESS:
             raise ValueError(f'Can\'t pull threads, response status code is {status_code}')
@@ -40,7 +41,7 @@ class Handler(ABC):
     def should_stop(self, utterance: str):
         return 'стоп' in utterance
 
-    def infer_index(self, utterance: str):
+    def infer_index(self, utterance: str, user_id: str):
         index = None
 
         if 'первый' in utterance:
@@ -65,13 +66,13 @@ class Handler(ABC):
             index = 9
 
         # if index is not None and index >= self.n_threads_per_response:
-        if index is not None and self.last_batch_size is not None and index < self.last_batch_size:
+        if index is not None and self._last_batch_size is not None and (last_batch_size := self._last_batch_size.get(user_id)) and index < last_batch_size:
             return index
 
         return None
 
-    def get_comment_list(self, index: int):
-        thread_object = self._threads[index]
+    def get_comment_list(self, index: int, user_id: str):
+        thread_object = self._threads[user_id][index]
 
         all_comments = [thread_object.title_text] + [
             REF_MARK.sub(' ', comment)
@@ -100,38 +101,53 @@ class Handler(ABC):
     def get_utterance(self, request: dict):
         pass
 
+    @abstractmethod
+    def get_user_id(self, request: dict):
+        pass
+
     def handle(self, request: dict):
         utterance = self.get_utterance(request).lower().strip()
+        user_id = self.get_user_id(request)
 
-        if self._offset is None:
-            self._offset = 0
+        user_offset = None if self._offset is None else self._offset.get(user_id)
+        user_threads = None if self._threads is None else self._threads.get(user_id)
 
-        if self._threads is None or self.should_reset_threads(utterance):
-            self._threads = self.list_threads()
-            self._offset = 0
+        if user_offset is None:
+            if self._offset is None:
+                self._offset = {user_id: 0}
+            else:
+                self._offset[user_id] = 0
+
+        if user_threads is None or self.should_reset_threads(utterance):
+            if self._threads is None:
+                self._threads = {user_id: self.list_threads()}
+            else:
+                self._threads[user_id] = self.list_threads()
+
+            self._offset[user_id] = 0
         else:
             if self.should_stop(utterance):
-                self._threads = None
-                self._offset = None
+                self._threads.pop(user_id)
+                self._offset.pop(user_id)
 
                 return self.make_response(request, 'Завершаю показ тредов', auto_listening = False)
 
-            index = self.infer_index(utterance)
+            index = self.infer_index(utterance, user_id)
 
             if index is None:
                 target_item = None
-                self._offset = min(len(self._threads) - self.n_threads_per_response, self._offset + self.last_batch_size)
+                self._offset[user_id] = min(len(self._threads[user_id]) - self.n_threads_per_response, self._offset[user_id] + self._last_batch_size[user_id])
             else:
-                target_item = self._offset + index
+                target_item = self._offset[user_id] + index
 
             if target_item is not None:
-                thread = self.get_comment_list(target_item)
+                thread = self.get_comment_list(target_item, user_id)
 
                 return self.make_response(request, '\n'.join(thread), ' <break time="1500ms"/> '.join(thread))
 
         text = ''
-        offset = self._offset
-        threads = self._threads
+        offset = self._offset[user_id]
+        threads = self._threads[user_id]
 
         batch_size = 0
 
@@ -147,6 +163,9 @@ class Handler(ABC):
             batch_size += 1
             text += next_thread
 
-        self.last_batch_size = batch_size
+        if self._last_batch_size is None:
+            self._last_batch_size = {user_id: batch_size}
+        else:
+            self._last_batch_size[user_id] = batch_size
 
         return self.make_response(request, text)

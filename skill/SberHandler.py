@@ -87,3 +87,11 @@ class SberHandler(Handler):
             return None
 
         return annotations.get('unified_normalized_text')
+
+    def get_user_id(self, request: dict):
+        uuid = request.get('uuid')
+
+        if uuid is None:
+            return None
+
+        return uuid.get('userId')

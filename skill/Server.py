@@ -22,6 +22,8 @@ class Server:
 
         @app.route('/app-connector', methods = ['POST'])
         def connect():
+            # print(request.json)
+
             response = self.sber.handle(request.json)
 
             # print(response)
