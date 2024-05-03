@@ -9,6 +9,9 @@ class SberHandler(Handler):
     def should_reset_threads(self, utterance: str):
         return 'хотеть' in utterance
 
+    def should_continue(self, utterance: str):
+        return 'далекий' in utterance
+
     def infer_index(self, utterance: str, user_id: str):
         index = None
 
@@ -38,6 +41,9 @@ class SberHandler(Handler):
             return index
 
         return None
+
+    def make_response_wrapper(self, request: dict, comments: list[str]):
+        return self.make_response(request, '\n'.join(comments), ' <break time="1500ms"/> '.join(comments))
 
     def make_response(self, request: dict, text: str, ssml: str = None, auto_listening: bool = True):
         payload = request.get('payload', {})

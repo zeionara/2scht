@@ -25,6 +25,12 @@ class Handler(ABC):
         self._threads = None
         self._offset = None
 
+        self._index = None
+        self._distance = None
+
+        self._cached_comments = None
+        self._cached_thread_id = None
+
     def list_threads(self, reverse: bool = True, skip_first_n: int = 0):
         response = get(CATALOG_URL, timeout = self.timeout)
 
@@ -40,6 +46,15 @@ class Handler(ABC):
 
     def should_stop(self, utterance: str):
         return 'стоп' in utterance
+
+    def should_continue(self, utterance: str):
+        return 'дальше' in utterance
+
+    def should_go_forward(self, utterance: str):
+        return 'вперед' in utterance
+
+    def should_go_back(self, utterance: str):
+        return 'назад' in utterance
 
     def infer_index(self, utterance: str, user_id: str):
         index = None
@@ -71,14 +86,31 @@ class Handler(ABC):
 
         return None
 
-    def get_comment_list(self, index: int, user_id: str):
+    def get_comment_list(self, index: int, user_id: str, distance: int = None):
         thread_object = self._threads[user_id][index]
 
-        all_comments = [thread_object.title_text] + [
-            REF_MARK.sub(' ', comment)
-            for topic in self._fetcher.fetch(thread_object.link, verbose = True)
-            for comment in topic.comments
-        ]
+        if self._cached_thread_id is not None and index == self._cached_thread_id.get(user_id):
+            all_comments = self._cached_comments.get(user_id)
+        else:
+            all_comments = [thread_object.title_text] + [
+                REF_MARK.sub(' ', comment)
+                for topic in self._fetcher.fetch(thread_object.link, verbose = True)
+                for comment in topic.comments
+            ]
+
+            if self._cached_thread_id is None:
+                self._cached_thread_id = {user_id: index}
+                self._cached_comments = {user_id: all_comments}
+            else:
+                self._cached_thread_id[user_id] = index
+                self._cached_comments[user_id] = all_comments
+
+        if distance is not None:
+            if distance >= len(all_comments):
+                return None, None
+
+            all_comments = all_comments[distance:]
+
         n_chars = 0
 
         top_comments = []
@@ -91,7 +123,7 @@ class Handler(ABC):
             else:
                 break
 
-        return top_comments
+        return top_comments, (0 if distance is None else distance) + len(top_comments) - 1
 
     @abstractmethod
     def make_response(self, request: dict, text: str = None, ssml: str = None, auto_listening: bool = True):
@@ -103,6 +135,10 @@ class Handler(ABC):
 
     @abstractmethod
     def get_user_id(self, request: dict):
+        pass
+
+    @abstractmethod
+    def make_response_wrapper(self, request: dict, comments: list[str]):
         pass
 
     def handle(self, request: dict):
@@ -130,9 +166,49 @@ class Handler(ABC):
                 self._threads.pop(user_id)
                 self._offset.pop(user_id)
 
+                self._index.pop(user_id)
+                self._distance.pop(user_id)
+
                 return self.make_response(request, 'Завершаю показ тредов', auto_listening = False)
 
-            index = self.infer_index(utterance, user_id)
+            if self.should_continue(utterance) and self._index.get(user_id) is not None and self._distance.get(user_id) is not None:
+                thread, distance = self.get_comment_list(self._index[user_id], user_id, self._distance[user_id] + 1)
+
+                if thread is None or distance is None:
+                    return self.make_response(request, 'Больше не осталось комментариев')
+
+                self._distance[user_id] = distance
+
+                return self.make_response_wrapper(request, thread)
+
+            if self.should_go_forward(utterance):
+                if self._distance is not None:
+                    self._distance.pop(user_id)
+                    current_index = None if self._index is None else self._index.get(user_id)
+
+                    if current_index is None:
+                        index = 0
+                    else:
+                        index = min(current_index + 1, len(self._threads[user_id]) - self._offset[user_id])
+
+                        if index >= self._last_batch_size[user_id]:
+                            self._last_batch_size[user_id] += 1
+            elif self.should_go_back(utterance):
+                if self._distance is not None:
+                    self._distance.pop(user_id)
+                    current_index = None if self._index is None else self._index.get(user_id)
+
+                    if current_index is None:
+                        index = 0
+                    else:
+                        index = max(current_index - 1, -self._offset[user_id])
+            else:
+                index = self.infer_index(utterance, user_id)
+
+            if self._index is None:
+                self._index = {user_id: index}
+            else:
+                self._index[user_id] = index
 
             if index is None:
                 target_item = None
@@ -141,9 +217,15 @@ class Handler(ABC):
                 target_item = self._offset[user_id] + index
 
             if target_item is not None:
-                thread = self.get_comment_list(target_item, user_id)
+                thread, distance = self.get_comment_list(target_item, user_id)
 
-                return self.make_response(request, '\n'.join(thread), ' <break time="1500ms"/> '.join(thread))
+                if distance is not None:
+                    if self._distance is None:
+                        self._distance = {user_id: distance}
+                    else:
+                        self._distance[user_id] = distance
+
+                return self.make_response_wrapper(request, thread)
 
         text = ''
         offset = self._offset[user_id]
