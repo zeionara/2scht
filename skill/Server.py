@@ -2,33 +2,45 @@ from flask import Flask, request, json
 
 from much import Fetcher
 
-from .SberHandler import SberHandler
+from .Handler import UserHub
+from .SberUserHub import SberUserHub
 
 
 DEFAULT_PORT = 1217
+OFFSET = 100
 
 
 class Server:
-    def __init__(self):
+    def __init__(self, verbose: bool = False):
         self.app = Flask('2scht speech skill server')
         self.fetcher = Fetcher()
+        self.verbose = verbose
 
         json.provider.DefaultJSONProvider.ensure_ascii = False
 
-        self.sber = SberHandler()
+        self.sber = SberUserHub()
 
     def serve(self, host: str = '0.0.0.0', port = DEFAULT_PORT):
         app = self.app
 
-        @app.route('/app-connector', methods = ['POST'])
-        def connect():
-            # print(request.json)
+        def handle(hub: UserHub):
+            verbose = self.verbose
 
-            response = self.sber.handle(request.json)
+            if verbose:
+                print('-' * OFFSET + 'request')
+                print(request.json)
 
-            # print(response)
+            response = hub.handle(request.json)
+
+            if verbose:
+                print('-' * OFFSET + 'response')
+                print(request.json)
 
             return response
+
+        @app.route('/app-connector', methods = ['POST'])
+        def connect():
+            return handle(self.sber)
 
         @app.route('/', methods = ['POST'])
         def pull():

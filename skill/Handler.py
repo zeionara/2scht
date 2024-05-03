@@ -13,23 +13,48 @@ REF_MARK = re.compile(r'^>')
 HTTP_SUCCESS = 200
 
 
-class Handler(ABC):
+class UserHub(ABC):  # stateless platform-dependent methods
 
-    def __init__(self, n_threads_per_response: int = 5, n_chars_per_response = 5000, timeout: int = 60):
+    def __init__(self, n_threads_per_response: int = 5, n_chars_per_response = 5000, timeout: int = 60, overlap: int = 2):
         self.n_threads_per_response = n_threads_per_response
         self.n_chars_per_response = n_chars_per_response
         self.timeout = timeout
+        self.overlap = overlap
 
         self._fetcher = Fetcher()
-        self._last_batch_size = None
-        self._threads = None
-        self._offset = None
+        self._users = None
+        self._cached_post_lists = None
 
-        self._index = None
-        self._distance = None
+    def handle(self, request: dict):
+        user_id = self.get_user_id(request)
 
-        self._cached_comments = None
-        self._cached_thread_id = None
+        if self._users is None:
+            handler = Handler(self)
+            self._users = {user_id: handler}
+        elif (handler := self._users.get(user_id)) is None:
+            handler = Handler(self)
+            self._users[user_id] = handler
+
+        return handler.handle(request)
+
+    def get_posts(self, thread: Thread):
+        thread_id = thread.id
+
+        if (cached_post_lists := self._cached_post_lists) is not None and (cached_posts := cached_post_lists.get(thread_id)) is not None:
+            all_posts = cached_posts
+        else:
+            all_posts = [thread.title_text] + [
+                REF_MARK.sub(' ', post)
+                for topic in self._fetcher.fetch(thread.link, verbose = True)
+                for post in topic.comments
+            ]
+
+            if self._cached_post_lists is None:
+                self._cached_post_lists = {thread_id: all_posts}
+            else:
+                self._cached_post_lists[thread_id] = all_posts
+
+        return all_posts
 
     def list_threads(self, reverse: bool = True, skip_first_n: int = 0):
         response = get(CATALOG_URL, timeout = self.timeout)
@@ -56,77 +81,32 @@ class Handler(ABC):
     def should_go_back(self, utterance: str):
         return 'назад' in utterance
 
-    def infer_index(self, utterance: str, user_id: str):
-        index = None
-
+    def infer_index(self, utterance: str):
         if 'первый' in utterance:
-            index = 0
-        elif 'второй' in utterance:
-            index = 1
-        elif 'третий' in utterance:
-            index = 2
-        elif 'четвертый' in utterance or 'четвёртый' in utterance:
-            index = 3
-        elif 'пятый' in utterance:
-            index = 4
-        elif 'шестой' in utterance:
-            index = 5
-        elif 'седьмой' in utterance:
-            index = 6
-        elif 'восьмой' in utterance:
-            index = 7
-        elif 'девятый' in utterance:
-            index = 8
-        elif 'десятый' in utterance:
-            index = 9
-
-        # if index is not None and index >= self.n_threads_per_response:
-        if index is not None and self._last_batch_size is not None and (last_batch_size := self._last_batch_size.get(user_id)) and index < last_batch_size:
-            return index
+            return 0
+        if 'второй' in utterance:
+            return 1
+        if 'третий' in utterance:
+            return 2
+        if 'четвертый' in utterance or 'четвёртый' in utterance:
+            return 3
+        if 'пятый' in utterance:
+            return 4
+        if 'шестой' in utterance:
+            return 5
+        if 'седьмой' in utterance:
+            return 6
+        if 'восьмой' in utterance:
+            return 7
+        if 'девятый' in utterance:
+            return 8
+        if 'десятый' in utterance:
+            return 9
 
         return None
 
-    def get_comment_list(self, index: int, user_id: str, distance: int = None):
-        thread_object = self._threads[user_id][index]
-
-        if self._cached_thread_id is not None and index == self._cached_thread_id.get(user_id):
-            all_comments = self._cached_comments.get(user_id)
-        else:
-            all_comments = [thread_object.title_text] + [
-                REF_MARK.sub(' ', comment)
-                for topic in self._fetcher.fetch(thread_object.link, verbose = True)
-                for comment in topic.comments
-            ]
-
-            if self._cached_thread_id is None:
-                self._cached_thread_id = {user_id: index}
-                self._cached_comments = {user_id: all_comments}
-            else:
-                self._cached_thread_id[user_id] = index
-                self._cached_comments[user_id] = all_comments
-
-        if distance is not None:
-            if distance >= len(all_comments):
-                return None, None
-
-            all_comments = all_comments[distance:]
-
-        n_chars = 0
-
-        top_comments = []
-
-        for comment in all_comments:
-            n_chars += len(comment)
-
-            if n_chars < self.n_chars_per_response:
-                top_comments.append(comment)
-            else:
-                break
-
-        return top_comments, (0 if distance is None else distance) + len(top_comments) - 1
-
     @abstractmethod
-    def make_response(self, request: dict, text: str = None, ssml: str = None, auto_listening: bool = True):
+    def make_response(self, request: dict, text: str = None, ssml: str = None, interactive: bool = True):
         pass
 
     @abstractmethod
@@ -138,106 +118,141 @@ class Handler(ABC):
         pass
 
     @abstractmethod
-    def make_response_wrapper(self, request: dict, comments: list[str]):
+    def posts_to_response(self, request: dict, posts: list[str]):
         pass
 
+
+class Handler:  # stateful platform-independent methods
+
+    def __init__(self, hub: UserHub):
+        self._hub = hub
+
+        self._last_batch_size = None  # number of threads shown in the last message
+        self._threads = None  # thread headers
+        self._offset = 0  # number of threads to skip when showing next thread to user
+
+        self._index = 0  # index of the next thread to show to user
+        self._distance = 0  # number of posts to skip when showing current thread to user
+
+    @property
+    def n_threads(self):
+        if self._threads is None:
+            raise ValueError('Threads are not initialized')
+
+        return len(self._threads)
+
+    def infer_index(self, utterance: str):
+        index = self._hub.infer_index(utterance)
+
+        if (
+            index is not None and
+            (last_batch_size := self._last_batch_size) is not None and
+            index < last_batch_size
+        ):
+            return index
+
+        return None
+
+    def get_posts(self, index: int, distance: int = None):
+        if (threads := self._threads) is None:
+            raise ValueError('Threads are not initialized')
+
+        posts = self._hub.get_posts(threads[index])
+
+        print(self._hub.overlap)
+
+        if distance is not None:
+            if distance >= len(posts):
+                return None, None
+
+            posts = posts[max(0, distance - self._hub.overlap):]
+
+        n_chars = 0
+        top_posts = []
+
+        for post in posts:
+            n_chars += len(post)
+
+            if n_chars < self._hub.n_chars_per_response:
+                top_posts.append(post)
+            else:
+                break
+
+        return top_posts, (0 if distance is None else distance) + len(top_posts) - 1
+
     def handle(self, request: dict):
-        utterance = self.get_utterance(request).lower().strip()
-        user_id = self.get_user_id(request)
+        utterance = self._hub.get_utterance(request).lower().strip()
 
-        user_offset = None if self._offset is None else self._offset.get(user_id)
-        user_threads = None if self._threads is None else self._threads.get(user_id)
+        threads = self._threads
 
-        if user_offset is None:
-            if self._offset is None:
-                self._offset = {user_id: 0}
-            else:
-                self._offset[user_id] = 0
-
-        if user_threads is None or self.should_reset_threads(utterance):
-            if self._threads is None:
-                self._threads = {user_id: self.list_threads()}
-            else:
-                self._threads[user_id] = self.list_threads()
-
-            self._offset[user_id] = 0
+        if threads is None or self._hub.should_reset_threads(utterance):
+            self._threads = threads = self._hub.list_threads()
+            self._offset = 0
         else:
-            if self.should_stop(utterance):
-                self._threads.pop(user_id)
-                self._offset.pop(user_id)
+            if self._hub.should_stop(utterance):
+                return self._hub.make_response(request, 'Завершаю показ тредов', interactive = False)
 
-                self._index.pop(user_id)
-                self._distance.pop(user_id)
+            if self._hub.should_continue(utterance) and self._index is not None and self._distance is not None:
+                posts, distance = self.get_posts(self._offset + self._index, self._distance + 1)
 
-                return self.make_response(request, 'Завершаю показ тредов', auto_listening = False)
+                if posts is None or distance is None:
+                    return self._hub.make_response(request, 'Больше не осталось комментариев')
 
-            if self.should_continue(utterance) and self._index.get(user_id) is not None and self._distance.get(user_id) is not None:
-                thread, distance = self.get_comment_list(self._index[user_id], user_id, self._distance[user_id] + 1)
+                self._distance = distance
 
-                if thread is None or distance is None:
-                    return self.make_response(request, 'Больше не осталось комментариев')
+                return self._hub.posts_to_response(request, posts)
 
-                self._distance[user_id] = distance
+            if self._hub.should_go_forward(utterance):
+                self._distance = 0
 
-                return self.make_response_wrapper(request, thread)
+                current_index = self._index
 
-            if self.should_go_forward(utterance):
-                if self._distance is not None:
-                    self._distance.pop(user_id)
-                    current_index = None if self._index is None else self._index.get(user_id)
+                if current_index is None:
+                    index = 0
+                else:
+                    index = min(current_index + 1, self.n_threads - self._offset - 1)
 
-                    if current_index is None:
-                        index = 0
-                    else:
-                        index = min(current_index + 1, len(self._threads[user_id]) - self._offset[user_id])
+                    if index >= self._last_batch_size:
+                        self._last_batch_size += 1
+            elif self._hub.should_go_back(utterance):
+                self._distance = 0
 
-                        if index >= self._last_batch_size[user_id]:
-                            self._last_batch_size[user_id] += 1
-            elif self.should_go_back(utterance):
-                if self._distance is not None:
-                    self._distance.pop(user_id)
-                    current_index = None if self._index is None else self._index.get(user_id)
+                current_index = self._index
 
-                    if current_index is None:
-                        index = 0
-                    else:
-                        index = max(current_index - 1, -self._offset[user_id])
+                if current_index is None:
+                    index = 0
+                else:
+                    index = max(current_index - 1, -self._offset)
             else:
-                index = self.infer_index(utterance, user_id)
+                index = self.infer_index(utterance)
 
-            if self._index is None:
-                self._index = {user_id: index}
-            else:
-                self._index[user_id] = index
+            self._index = index
 
             if index is None:
                 target_item = None
-                self._offset[user_id] = min(len(self._threads[user_id]) - self.n_threads_per_response, self._offset[user_id] + self._last_batch_size[user_id])
+                self._offset = min(self.n_threads - self._hub.n_threads_per_response, self._offset + self._last_batch_size)
             else:
-                target_item = self._offset[user_id] + index
+                target_item = self._offset + index
 
             if target_item is not None:
-                thread, distance = self.get_comment_list(target_item, user_id)
+                posts, distance = self.get_posts(target_item)
 
                 if distance is not None:
-                    if self._distance is None:
-                        self._distance = {user_id: distance}
-                    else:
-                        self._distance[user_id] = distance
+                    self._distance = distance
 
-                return self.make_response_wrapper(request, thread)
+                return self._hub.posts_to_response(request, posts)
 
         text = ''
-        offset = self._offset[user_id]
-        threads = self._threads[user_id]
+        offset = self._offset
+        threads = self._threads
 
         batch_size = 0
 
-        for i in range(offset, offset + self.n_threads_per_response):
+        for i in range(offset, offset + self._hub.n_threads_per_response):
             next_thread = f'Тред номер {i + 1}. {threads[i].title_text}.'
 
             if len(text) > 0:
-                if len(text) + len(next_thread) > self.n_chars_per_response:
+                if len(text) + len(next_thread) > self._hub.n_chars_per_response:
                     break
 
                 text += '\n'
@@ -245,9 +260,6 @@ class Handler(ABC):
             batch_size += 1
             text += next_thread
 
-        if self._last_batch_size is None:
-            self._last_batch_size = {user_id: batch_size}
-        else:
-            self._last_batch_size[user_id] = batch_size
+        self._last_batch_size = batch_size
 
-        return self.make_response(request, text)
+        return self._hub.make_response(request, text)

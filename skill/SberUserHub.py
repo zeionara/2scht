@@ -1,7 +1,7 @@
-from .Handler import Handler
+from .Handler import UserHub
 
 
-class SberHandler(Handler):
+class SberUserHub(UserHub):
 
     def __init__(self, *args, n_threads_per_response: int = 10, n_chars_per_response = 7000, **kwargs):
         super().__init__(*args, n_threads_per_response = n_threads_per_response, n_chars_per_response = n_chars_per_response, **kwargs)
@@ -12,43 +12,35 @@ class SberHandler(Handler):
     def should_continue(self, utterance: str):
         return 'далекий' in utterance
 
-    def infer_index(self, utterance: str, user_id: str):
-        index = None
-
+    def infer_index(self, utterance: str):
         if '1' in utterance:
-            index = 0
-        elif '2' in utterance:
-            index = 1
-        elif '3' in utterance:
-            index = 2
-        elif '4' in utterance:
-            index = 3
-        elif '5' in utterance:
-            index = 4
-        elif '6' in utterance:
-            index = 5
-        elif '7' in utterance:
-            index = 6
-        elif '8' in utterance:
-            index = 7
-        elif '9' in utterance:
-            index = 8
-        elif '10' in utterance:
-            index = 9
-
-        # if index is not None and index >= self.n_threads_per_response:
-        if index is not None and self._last_batch_size is not None and (last_batch_size := self._last_batch_size.get(user_id)) and index < last_batch_size:
-            return index
+            return 0
+        if '2' in utterance:
+            return 1
+        if '3' in utterance:
+            return 2
+        if '4' in utterance:
+            return 3
+        if '5' in utterance:
+            return 4
+        if '6' in utterance:
+            return 5
+        if '7' in utterance:
+            return 6
+        if '8' in utterance:
+            return 7
+        if '9' in utterance:
+            return 8
+        if '10' in utterance:
+            return 9
 
         return None
 
-    def make_response_wrapper(self, request: dict, comments: list[str]):
-        return self.make_response(request, '\n'.join(comments), ' <break time="1500ms"/> '.join(comments))
+    def posts_to_response(self, request: dict, posts: list[str]):
+        return self.make_response(request, '\n'.join(posts), ' <break time="1500ms"/> '.join(posts))
 
-    def make_response(self, request: dict, text: str, ssml: str = None, auto_listening: bool = True):
+    def make_response(self, request: dict, text: str, ssml: str = None, interactive: bool = True):
         payload = request.get('payload', {})
-
-        # assert not (text is None and ssml is None), 'text or ssml is required'
 
         if ssml is None:
             print(f'Response length (text) is {len(text)}')
@@ -74,7 +66,7 @@ class SberHandler(Handler):
                         }
                     }
                 ],
-                "auto_listening": auto_listening,
+                "auto_listening": interactive,
                 "finished": False,
                 "device": payload.get('device'),
                 "intent": "string",
