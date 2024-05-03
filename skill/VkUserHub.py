@@ -14,6 +14,8 @@ class VkUserHub(UserHub):
         session = request.get('session')
         version = request.get('version')
 
+        print(f'Response length (text) is {sum(len(post) for post in posts)}')
+
         return {
             'response': {
                 'commands': [

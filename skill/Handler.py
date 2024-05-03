@@ -73,7 +73,7 @@ class UserHub(ABC):  # stateless platform-dependent methods
         return 'стоп' in utterance
 
     def should_continue(self, utterance: str):
-        return 'дальше' in utterance
+        return 'дальше' in utterance or 'скилл' in utterance
 
     def should_go_forward(self, utterance: str):
         return 'вперед' in utterance
