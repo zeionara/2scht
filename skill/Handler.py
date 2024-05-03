@@ -109,7 +109,8 @@ class UserHub(ABC):  # stateless platform-dependent methods
         return 'стоп' in utterance
 
     def should_continue(self, utterance: str):
-        return 'дальше' in utterance or 'скилл' in utterance
+        # print(utterance)
+        return 'дальше' in utterance or 'скилл' in utterance or 'skill' in utterance
 
     def should_go_forward(self, utterance: str):
         return 'вперед' in utterance
@@ -228,6 +229,7 @@ class Handler:  # stateful platform-independent methods
             if self._hub.should_stop(utterance):
                 return self._hub.make_response(request, 'Завершаю показ тредов', interactive = False)
 
+            # print(self._hub.should_continue(utterance), self._index, self._distance)
             if self._hub.should_continue(utterance) and self._index is not None and self._distance is not None:
                 posts, distance = self.get_posts(self._offset + self._index, self._distance + 1)
 

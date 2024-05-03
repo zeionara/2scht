@@ -10,7 +10,7 @@ class SberUserHub(UserHub):
         return 'хотеть' in utterance
 
     def should_continue(self, utterance: str):
-        return 'далекий' in utterance or 'скилл' in utterance
+        return 'далекий' in utterance or 'скилл' in utterance or 'skill' in utterance
 
     def infer_index(self, utterance: str):
         if '1' in utterance:
