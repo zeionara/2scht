@@ -159,7 +159,7 @@ class Handler:  # stateful platform-independent methods
 
         posts = self._hub.get_posts(threads[index])
 
-        print(self._hub.overlap)
+        # print(self._hub.overlap)
 
         if distance is not None:
             if distance >= len(posts):
@@ -242,24 +242,22 @@ class Handler:  # stateful platform-independent methods
 
                 return self._hub.posts_to_response(request, posts)
 
-        text = ''
+        thread_headers_len = 0
+        thread_headers = []
         offset = self._offset
         threads = self._threads
 
-        batch_size = 0
+        # for i in range(offset, offset + self._hub.n_threads_per_response):
+        for i in range(self._hub.n_threads_per_response):
+            next_thread = f'Тред номер {i + 1}. {threads[offset + i].title_text}.'
 
-        for i in range(offset, offset + self._hub.n_threads_per_response):
-            next_thread = f'Тред номер {i + 1}. {threads[i].title_text}.'
-
-            if len(text) > 0:
-                if len(text) + len(next_thread) > self._hub.n_chars_per_response:
+            if len(thread_headers) > 0:
+                if thread_headers_len + len(next_thread) > self._hub.n_chars_per_response:
                     break
 
-                text += '\n'
+            thread_headers.append(next_thread)
+            thread_headers_len += len(next_thread)
 
-            batch_size += 1
-            text += next_thread
+        self._last_batch_size = len(thread_headers)
 
-        self._last_batch_size = batch_size
-
-        return self._hub.make_response(request, text)
+        return self._hub.posts_to_response(request, thread_headers)
