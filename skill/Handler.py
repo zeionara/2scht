@@ -53,7 +53,7 @@ class UserHub(ABC):  # stateless platform-dependent methods
 
         self._fetcher = Fetcher()
         self._users = None
-        self._cached_post_lists = None
+        self._cached_post_lists = {}  # None
         # self._cached_post_lists = {'foo': CacheEntry(['bar', 'baz'], time())}
         self._cached_post_lists_lock = RLock()
 
