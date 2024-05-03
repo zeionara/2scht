@@ -1,5 +1,9 @@
-from abc import ABC, abstractmethod
+from __future__ import annotations
 import re
+from abc import ABC, abstractmethod
+from threading import Thread as ExecutableThread, RLock
+from time import sleep, time
+from dataclasses import dataclass
 
 from requests import get
 
@@ -11,6 +15,32 @@ from .Thread import Thread
 CATALOG_URL = 'https://2ch.hk/b/catalog.json'
 REF_MARK = re.compile(r'^>')
 HTTP_SUCCESS = 200
+CLEANUP_INTERVAL = 3600
+CLEANUP_TIMEOUT = 3600
+
+
+def cleanup_cached_post_lists(hub: UserHub):
+    cache = hub._cached_post_lists
+
+    while True:
+        current_time = time()
+
+        # print(cache)
+
+        with hub._cached_post_lists_lock:
+            items = list(cache.items())
+
+            for key, value in items:
+                if current_time - value.time > CLEANUP_TIMEOUT:
+                    cache.pop(key)
+
+        sleep(CLEANUP_INTERVAL)
+
+
+@dataclass
+class CacheEntry:
+    posts: list[str]
+    time: int
 
 
 class UserHub(ABC):  # stateless platform-dependent methods
@@ -24,6 +54,11 @@ class UserHub(ABC):  # stateless platform-dependent methods
         self._fetcher = Fetcher()
         self._users = None
         self._cached_post_lists = None
+        # self._cached_post_lists = {'foo': CacheEntry(['bar', 'baz'], time())}
+        self._cached_post_lists_lock = RLock()
+
+        self.cleanup_thread = cleanup_thread = ExecutableThread(target = cleanup_cached_post_lists, args = (self, ))
+        cleanup_thread.start()
 
     def handle(self, request: dict):
         user_id = self.get_user_id(request)
@@ -40,19 +75,20 @@ class UserHub(ABC):  # stateless platform-dependent methods
     def get_posts(self, thread: Thread):
         thread_id = thread.id
 
-        if (cached_post_lists := self._cached_post_lists) is not None and (cached_posts := cached_post_lists.get(thread_id)) is not None:
-            all_posts = cached_posts
-        else:
-            all_posts = [thread.title_text] + [
-                REF_MARK.sub(' ', post)
-                for topic in self._fetcher.fetch(thread.link, verbose = True)
-                for post in topic.comments
-            ]
-
-            if self._cached_post_lists is None:
-                self._cached_post_lists = {thread_id: all_posts}
+        with self._cached_post_lists_lock:
+            if (cached_post_lists := self._cached_post_lists) is not None and (cached_posts := cached_post_lists.get(thread_id)) is not None:
+                all_posts = cached_posts.posts
             else:
-                self._cached_post_lists[thread_id] = all_posts
+                all_posts = [thread.title_text] + [
+                    REF_MARK.sub(' ', post)
+                    for topic in self._fetcher.fetch(thread.link, verbose = True)
+                    for post in topic.comments
+                ]
+
+                if self._cached_post_lists is None:
+                    self._cached_post_lists = {thread_id: CacheEntry(all_posts, time())}
+                else:
+                    self._cached_post_lists[thread_id] = CacheEntry(all_posts, time())
 
         return all_posts
 
@@ -254,6 +290,8 @@ class Handler:  # stateful platform-independent methods
             if len(thread_headers) > 0:
                 if thread_headers_len + len(next_thread) > self._hub.n_chars_per_response:
                     break
+            elif len(next_thread) > self._hub.n_chars_per_response:
+                next_thread = next_thread[:self._hub.n_chars_per_response]
 
             thread_headers.append(next_thread)
             thread_headers_len += len(next_thread)
