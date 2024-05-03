@@ -9,7 +9,7 @@ class SberHandler(Handler):
     def should_reset_threads(self, utterance: str):
         return 'хотеть' in utterance
 
-    def infer_index(self, utterance: str):
+    def infer_index(self, utterance: str, user_id: str):
         index = None
 
         if '1' in utterance:
@@ -33,7 +33,8 @@ class SberHandler(Handler):
         elif '10' in utterance:
             index = 9
 
-        if index is not None and index >= self.n_threads_per_response:
+        # if index is not None and index >= self.n_threads_per_response:
+        if index is not None and self._last_batch_size is not None and (last_batch_size := self._last_batch_size.get(user_id)) and index < last_batch_size:
             return None
 
         return index
