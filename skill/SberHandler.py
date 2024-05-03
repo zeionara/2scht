@@ -35,9 +35,9 @@ class SberHandler(Handler):
 
         # if index is not None and index >= self.n_threads_per_response:
         if index is not None and self._last_batch_size is not None and (last_batch_size := self._last_batch_size.get(user_id)) and index < last_batch_size:
-            return None
+            return index
 
-        return index
+        return None
 
     def make_response(self, request: dict, text: str, ssml: str = None, auto_listening: bool = True):
         payload = request.get('payload', {})
