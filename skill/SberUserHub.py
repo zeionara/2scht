@@ -40,6 +40,15 @@ class SberUserHub(UserHub):
         return None
 
     def posts_to_response(self, request: dict, posts: list[str]):
+        # preprocessed_posts = []
+
+        # for post in posts:
+        #     preprocessed_posts.append(
+        #         normalize(post)
+        #     )
+
+        # print(posts)
+
         return self.make_response(request, '\n'.join(posts), ' <break time="1500ms"/> '.join(posts))
 
     def make_response(self, request: dict, text: str, ssml: str = None, interactive: bool = True):

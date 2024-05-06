@@ -1,5 +1,4 @@
 from __future__ import annotations
-import re
 from abc import ABC, abstractmethod
 from threading import Thread as ExecutableThread, RLock
 from time import sleep, time
@@ -10,10 +9,10 @@ from requests import get
 from much import Fetcher
 
 from .Thread import Thread
+from .util import normalize
 
 
 CATALOG_URL = 'https://2ch.hk/b/catalog.json'
-REF_MARK = re.compile(r'^>')
 HTTP_SUCCESS = 200
 CLEANUP_INTERVAL = 3600
 CLEANUP_TIMEOUT = 3600
@@ -79,8 +78,8 @@ class UserHub(ABC):  # stateless platform-dependent methods
             if (cached_post_lists := self._cached_post_lists) is not None and (cached_posts := cached_post_lists.get(thread_id)) is not None:
                 all_posts = cached_posts.posts
             else:
-                all_posts = [thread.title_text] + [
-                    REF_MARK.sub(' ', post)
+                all_posts = [normalize(thread.title_text)] + [
+                    normalize(post)
                     for topic in self._fetcher.fetch(thread.link, verbose = True)
                     for post in topic.comments
                 ]
@@ -172,7 +171,8 @@ class Handler:  # stateful platform-independent methods
         self._offset = 0  # number of threads to skip when showing next thread to user
 
         self._index = 0  # index of the next thread to show to user
-        self._distance = 0  # number of posts to skip when showing current thread to user
+        self._distance = 0  # number of posts to skip when showing current thread to user in the next response
+        self._last_distance = 0  # number of posts to skip which was used in the last response
 
     @property
     def n_threads(self):
@@ -234,6 +234,14 @@ class Handler:  # stateful platform-independent methods
             if self._hub.should_stop(utterance):
                 return self._hub.make_response(request, 'Завершаю показ тредов', interactive = False)
 
+            if self._hub.should_repeat(utterance):
+                posts, _ = self.get_posts(self._offset + self._index, self._last_distance + 1)
+
+                if posts is None:
+                    return self._hub.make_response(request, 'Больше не осталось комментариев')
+
+                return self._hub.posts_to_response(request, posts)
+
             # print(self._hub.should_continue(utterance), self._index, self._distance)
             if self._hub.should_continue(utterance) and self._index is not None and self._distance is not None:
                 posts, distance = self.get_posts(self._offset + self._index, self._distance + 1)
@@ -241,14 +249,14 @@ class Handler:  # stateful platform-independent methods
                 if posts is None or distance is None:
                     return self._hub.make_response(request, 'Больше не осталось комментариев')
 
+                self._last_distance = self._distance
                 self._distance = distance
 
                 return self._hub.posts_to_response(request, posts)
 
-            if self._hub.should_repeat(utterance):
-                index = self._index
-            elif self._hub.should_go_forward(utterance):
+            if self._hub.should_go_forward(utterance):
                 self._distance = 0
+                self._last_distance = 0
 
                 current_index = self._index
 
@@ -261,6 +269,7 @@ class Handler:  # stateful platform-independent methods
                         self._last_batch_size += 1
             elif self._hub.should_go_back(utterance):
                 self._distance = 0
+                self._last_distance = 0
 
                 current_index = self._index
 
@@ -283,6 +292,7 @@ class Handler:  # stateful platform-independent methods
                 posts, distance = self.get_posts(target_item)
 
                 if distance is not None:
+                    self._last_distance = 0
                     self._distance = distance
 
                 return self._hub.posts_to_response(request, posts)
@@ -294,7 +304,7 @@ class Handler:  # stateful platform-independent methods
 
         # for i in range(offset, offset + self._hub.n_threads_per_response):
         for i in range(self._hub.n_threads_per_response):
-            next_thread = f'Тред номер {i + 1}. {threads[offset + i].title_text}.'
+            next_thread = f'Тред номер {i + 1}. {normalize(threads[offset + i].title_text)}.'
 
             if len(thread_headers) > 0:
                 if thread_headers_len + len(next_thread) > self._hub.n_chars_per_response:
