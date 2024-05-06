@@ -118,6 +118,9 @@ class UserHub(ABC):  # stateless platform-dependent methods
     def should_go_back(self, utterance: str):
         return 'назад' in utterance
 
+    def should_repeat(self, utterance: str):
+        return 'поиграем' in utterance
+
     def infer_index(self, utterance: str):
         if 'первый' in utterance:
             return 0
@@ -220,6 +223,8 @@ class Handler:  # stateful platform-independent methods
     def handle(self, request: dict):
         utterance = self._hub.get_utterance(request).lower().strip()
 
+        print(f'Got utterance "{utterance}"')
+
         threads = self._threads
 
         if threads is None or self._hub.should_reset_threads(utterance):
@@ -240,7 +245,9 @@ class Handler:  # stateful platform-independent methods
 
                 return self._hub.posts_to_response(request, posts)
 
-            if self._hub.should_go_forward(utterance):
+            if self._hub.should_repeat(utterance):
+                index = self._index
+            elif self._hub.should_go_forward(utterance):
                 self._distance = 0
 
                 current_index = self._index

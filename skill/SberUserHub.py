@@ -12,6 +12,9 @@ class SberUserHub(UserHub):
     def should_continue(self, utterance: str):
         return 'далекий' in utterance or 'скилл' in utterance or 'skill' in utterance
 
+    def should_repeat(self, utterance: str):
+        return 'поиграть' in utterance
+
     def infer_index(self, utterance: str):
         if '1' in utterance:
             return 0
