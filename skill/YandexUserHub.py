@@ -33,7 +33,7 @@ class YandexUserHub(VkUserHub):
         return None
 
     def posts_to_response(self, request: dict, posts: list[str]):
-        return self.make_response(request, '\n'.join(posts), ' sil <[1500]> '.join(posts))
+        return self.make_response(request, '\n'.join(posts), 'sil <[1500]>'.join(posts))
 
     def make_response(self, request: dict, text: str, ssml: str = None, interactive: bool = True):
         if ssml is None:
