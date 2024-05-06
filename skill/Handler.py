@@ -17,6 +17,11 @@ HTTP_SUCCESS = 200
 CLEANUP_INTERVAL = 3600
 CLEANUP_TIMEOUT = 3600
 
+HELP_TEXT = (
+    'Я могу озвучивать треды с двача. '
+    'Просто назовите номер заинтересовавшего вас треда'
+)
+
 
 def cleanup_cached_post_lists(hub: UserHub):
     cache = hub._cached_post_lists
@@ -119,6 +124,9 @@ class UserHub(ABC):  # stateless platform-dependent methods
 
     def should_repeat(self, utterance: str):
         return 'поиграем' in utterance
+
+    def should_help(self, utterance: str):
+        return 'можешь' in utterance or 'умеешь' in utterance or 'можете' in utterance or 'умеете' in utterance
 
     def infer_index(self, utterance: str):
         if 'первый' in utterance:
@@ -224,6 +232,9 @@ class Handler:  # stateful platform-independent methods
         utterance = self._hub.get_utterance(request).lower().strip()
 
         print(f'Got utterance "{utterance}"')
+
+        if self._hub.should_help(utterance):
+            return self._hub.make_response(request, HELP_TEXT)
 
         threads = self._threads
 
