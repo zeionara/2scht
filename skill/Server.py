@@ -6,6 +6,7 @@ from .Handler import UserHub
 
 from .SberUserHub import SberUserHub
 from .VkUserHub import VkUserHub
+from .YandexUserHub import YandexUserHub
 
 
 DEFAULT_PORT = 1217
@@ -22,6 +23,7 @@ class Server:
 
         self.sber = SberUserHub()
         self.vk = VkUserHub()
+        self.yandex = YandexUserHub()
 
     def serve(self, host: str = '0.0.0.0', port = DEFAULT_PORT):
         app = self.app
@@ -46,7 +48,12 @@ class Server:
             return handle(self.sber)
 
         @app.route('/', methods = ['POST'])
-        def vk():
+        def vk_and_yandex():
+            # print(self.yandex.get_user_id(request.json), self.yandex.get_utterance(request.json))
+
+            if self.yandex.can_handle(request.json):
+                return handle(self.yandex)
+
             return handle(self.vk)
 
         app.run(host = host, port = port)  # , ssl_context = ('cert/cert.pem', 'cert/key.pem'))
