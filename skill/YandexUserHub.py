@@ -8,30 +8,6 @@ class YandexUserHub(VkUserHub):
 
         self.version = version
 
-    def infer_index(self, utterance: str):
-        if '1' in utterance:
-            return 0
-        if '2' in utterance:
-            return 1
-        if '3' in utterance:
-            return 2
-        if '4' in utterance:
-            return 3
-        if '5' in utterance:
-            return 4
-        if '6' in utterance:
-            return 5
-        if '7' in utterance:
-            return 6
-        if '8' in utterance:
-            return 7
-        if '9' in utterance:
-            return 8
-        if '10' in utterance:
-            return 9
-
-        return None
-
     def posts_to_response(self, request: dict, posts: list[str]):
         return self.make_response(request, '\n'.join(posts), 'sil <[1500]>'.join(posts))
 
