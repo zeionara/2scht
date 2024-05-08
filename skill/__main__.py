@@ -10,8 +10,9 @@ def main():
 
 @main.command()
 @option('--port', '-p', type = int, default = DEFAULT_PORT)
-def serve(port: int):
-    Server().serve(port = port)
+@option('--callback', '-c', is_flag = True)
+def serve(port: int, callback: bool):
+    Server(callback = callback).serve(port = port)
 
 
 if __name__ == '__main__':

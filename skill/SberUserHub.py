@@ -18,6 +18,9 @@ class SberUserHub(UserHub):
     def should_help(self, utterance: str):
         return 'мочь' in utterance or 'уметь' in utterance
 
+    def should_run_callback(self, utterance: str):
+        return 'нужный' in utterance
+
     def infer_index(self, utterance: str):
         if '1' in utterance:
             return 0
@@ -109,3 +112,11 @@ class SberUserHub(UserHub):
             return None
 
         return uuid.get('userId')
+
+    def handle(self, request: dict):
+        utterance = self.get_utterance(request)
+
+        if self.should_run_callback(utterance):
+            return self.make_response(request, 'Маруся, запусти скилл оранжевая нить')
+
+        return super().handle(request)

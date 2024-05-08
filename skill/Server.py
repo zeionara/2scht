@@ -14,15 +14,16 @@ OFFSET = 100
 
 
 class Server:
-    def __init__(self, verbose: bool = False):
+    def __init__(self, verbose: bool = False, callback: bool = False):
         self.app = Flask('2scht speech skill server')
         self.fetcher = Fetcher()
         self.verbose = verbose
+        self.callback = callback
 
         json.provider.DefaultJSONProvider.ensure_ascii = False
 
         self.sber = SberUserHub()
-        self.vk = VkUserHub()
+        self.vk = VkUserHub(callback = callback)
         self.yandex = YandexUserHub()
 
     def serve(self, host: str = '0.0.0.0', port = DEFAULT_PORT):
