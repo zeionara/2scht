@@ -3,8 +3,8 @@ from .VkUserHub import VkUserHub
 
 class YandexUserHub(VkUserHub):
 
-    def __init__(self, *args, n_threads_per_response: int = 10, n_chars_per_response = 1024, version: str = '1.0', **kwargs):
-        super().__init__(*args, n_threads_per_response = n_threads_per_response, n_chars_per_response = n_chars_per_response, **kwargs)
+    def __init__(self, *args, n_threads_per_response: int = 10, n_chars_per_response = 1024, version: str = '1.0', overlap: int = 0, **kwargs):
+        super().__init__(*args, n_threads_per_response = n_threads_per_response, n_chars_per_response = n_chars_per_response, overlap = overlap, **kwargs)
 
         self.version = version
 
@@ -64,3 +64,11 @@ class YandexUserHub(VkUserHub):
             return False
 
         return client_id.startswith('ru.yandex')
+
+    def handle(self, request: dict):
+        utterance = self.get_utterance(request)
+
+        if utterance in (None, '', 'ping'):
+            return self.make_response(request, 'Привет, скажи "запусти навык" для вывода списка тредов, после чего назови номер понравившегося треда и я его озвучу')
+
+        return super().handle(request)

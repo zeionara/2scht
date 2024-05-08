@@ -117,7 +117,7 @@ class UserHub(ABC):  # stateless platform-dependent methods
         return 'дальше' in utterance or 'скилл' in utterance or 'skill' in utterance
 
     def should_go_forward(self, utterance: str):
-        return 'вперед' in utterance
+        return 'вперед' in utterance or 'вперёд' in utterance
 
     def should_go_back(self, utterance: str):
         return 'назад' in utterance
@@ -192,6 +192,8 @@ class Handler:  # stateful platform-independent methods
     def infer_index(self, utterance: str):
         index = self._hub.infer_index(utterance)
 
+        # print(index, index is not None, (last_batch_size := self._last_batch_size) is not None, last_batch_size)
+
         if (
             index is not None and
             (last_batch_size := self._last_batch_size) is not None and
@@ -206,6 +208,7 @@ class Handler:  # stateful platform-independent methods
             raise ValueError('Threads are not initialized')
 
         posts = self._hub.get_posts(threads[index])
+        overlap = self._hub.overlap
 
         # print(self._hub.overlap)
 
@@ -213,7 +216,18 @@ class Handler:  # stateful platform-independent methods
             if distance >= len(posts):
                 return None, None
 
-            posts = posts[max(0, distance - self._hub.overlap):]
+            posts = posts[max(0, distance - overlap):]
+
+            shift = 0  # skip n posts in the beginning if they are too large to not to stuck with them
+
+            while sum(len(post) for post in posts[shift:overlap]) > self._hub.n_chars_per_response:
+                shift += 1
+
+            posts = posts[shift:]
+
+        # if distance is None:
+        #     for post, i in enumerate(posts):
+        #         print(post, i)
 
         n_chars = 0
         top_posts = []
@@ -224,9 +238,12 @@ class Handler:  # stateful platform-independent methods
             if n_chars < self._hub.n_chars_per_response:
                 top_posts.append(post)
             else:
+                if len(top_posts) < 1:
+                    top_posts.append(post[:self._hub.n_chars_per_response])
+
                 break
 
-        return top_posts, (0 if distance is None else distance) + len(top_posts) - 1
+        return top_posts, (0 if distance is None else distance) + len(top_posts) - 1 - (0 if distance is None else self._hub.overlap)
 
     def handle(self, request: dict):
         utterance = self._hub.get_utterance(request).lower().strip()
@@ -256,6 +273,8 @@ class Handler:  # stateful platform-independent methods
             # print(self._hub.should_continue(utterance), self._index, self._distance)
             if self._hub.should_continue(utterance) and self._index is not None and self._distance is not None:
                 posts, distance = self.get_posts(self._offset + self._index, self._distance + 1)
+
+                # print(f'current distance = {self._distance}, next distance = {distance}')
 
                 if posts is None or distance is None:
                     return self._hub.make_response(request, 'Больше не осталось комментариев')
