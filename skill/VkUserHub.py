@@ -1,7 +1,8 @@
 from .Handler import UserHub
 
 
-PRIMARY_VOICE = 'vasilisa-hifigan'
+# PRIMARY_VOICE = 'vasilisa-hifigan'
+PRIMARY_VOICE = 'maria-serious'
 SECONDARY_VOICE = 'pavel-hifigan'
 
 CALLBACK_TRIGGER = 'Салют, запусти нужен навык оранжевая нить'
@@ -10,7 +11,7 @@ CALLBACK_TRIGGER_LENGTH = len(CALLBACK_TRIGGER)
 
 class VkUserHub(UserHub):
 
-    def __init__(self, *args, n_threads_per_response: int = 10, n_chars_per_response = 7000, callback: bool = False, **kwargs):
+    def __init__(self, *args, n_threads_per_response: int = 10, n_chars_per_response = 6000, callback: bool = False, **kwargs):
         super().__init__(*args, n_threads_per_response = n_threads_per_response, n_chars_per_response = n_chars_per_response - (CALLBACK_TRIGGER_LENGTH if callback else 0), **kwargs)
 
         self.callback = callback

@@ -116,6 +116,10 @@ class UserHub(ABC):  # stateless platform-dependent methods
         # print(utterance)
         return 'дальше' in utterance or 'скилл' in utterance or 'skill' in utterance
 
+    def should_rewind(self, utterance: str):
+        # print(utterance)
+        return 'листай' in utterance or 'вернись' in utterance
+
     def should_go_forward(self, utterance: str):
         return 'вперед' in utterance or 'вперёд' in utterance
 
@@ -275,6 +279,17 @@ class Handler:  # stateful platform-independent methods
                 posts, distance = self.get_posts(self._offset + self._index, self._distance + 1)
 
                 # print(f'current distance = {self._distance}, next distance = {distance}')
+
+                if posts is None or distance is None:
+                    return self._hub.make_response(request, 'Больше не осталось комментариев')
+
+                self._last_distance = self._distance
+                self._distance = distance
+
+                return self._hub.posts_to_response(request, posts)
+
+            if self._hub.should_rewind(utterance) and self._index is not None and self._distance is not None:
+                posts, distance = self.get_posts(self._offset + self._index, max(self._distance - 1, 0))
 
                 if posts is None or distance is None:
                     return self._hub.make_response(request, 'Больше не осталось комментариев')
