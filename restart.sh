@@ -4,7 +4,7 @@ delay=${1:-2}  # seconds
 
 cd /home/remote/2scht
 
-target_process="$(ps -aux | grep ngrok | grep -v grep | head -n 1 | cut -d ' ' -f 4)"
+target_process="$(ps -aux | grep ngrok | grep -v grep | head -n 1 | awk '{print $2}')"
 
 if test -z "$target_process"; then
     echo 'No existing ngrok process'
