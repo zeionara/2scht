@@ -1,10 +1,12 @@
 from .Handler import UserHub
 
+POST_SEP = ' <break time="1500ms"/> '
+
 
 class SberUserHub(UserHub):
 
-    def __init__(self, *args, n_threads_per_response: int = 10, n_chars_per_response = 7000, **kwargs):
-        super().__init__(*args, n_threads_per_response = n_threads_per_response, n_chars_per_response = n_chars_per_response, **kwargs)
+    def __init__(self, *args, n_threads_per_response: int = 10, n_chars_per_response = 4000, **kwargs):
+        super().__init__(*args, n_threads_per_response = n_threads_per_response, n_chars_per_response = n_chars_per_response, post_sep_length = len(POST_SEP), **kwargs)
 
     def should_reset_threads(self, utterance: str):
         return 'хотеть' in utterance
@@ -55,7 +57,7 @@ class SberUserHub(UserHub):
 
         # print(posts)
 
-        return self.make_response(request, '\n'.join(posts), ' <break time="1500ms"/> '.join(posts))
+        return self.make_response(request, '\n'.join(posts), POST_SEP.join(posts)[:self.n_chars_per_response])
 
     def make_response(self, request: dict, text: str, ssml: str = None, interactive: bool = True):
         payload = request.get('payload', {})

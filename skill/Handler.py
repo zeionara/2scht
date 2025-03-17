@@ -49,9 +49,10 @@ class CacheEntry:
 
 class UserHub(ABC):  # stateless platform-dependent methods
 
-    def __init__(self, n_threads_per_response: int = 5, n_chars_per_response = 5000, timeout: int = 60, overlap: int = 2):
+    def __init__(self, n_threads_per_response: int = 5, n_chars_per_response = 5000, post_sep_length: int = 0, timeout: int = 60, overlap: int = 2):
         self.n_threads_per_response = n_threads_per_response
         self.n_chars_per_response = n_chars_per_response
+        self.post_sep_length = post_sep_length
         self.timeout = timeout
         self.overlap = overlap
 
@@ -239,11 +240,13 @@ class Handler:  # stateful platform-independent methods
         for post in posts:
             n_chars += len(post)
 
-            if n_chars < self._hub.n_chars_per_response:
+            if n_chars < (self._hub.n_chars_per_response + self._hub.post_sep_length * len(top_posts)):
                 top_posts.append(post)
             else:
                 if len(top_posts) < 1:
                     top_posts.append(post[:self._hub.n_chars_per_response])
+                elif len(top_posts) > 1:
+                    top_posts = top_posts[:-1]
 
                 break
 
