@@ -3,13 +3,14 @@ from abc import ABC, abstractmethod
 from threading import Thread as ExecutableThread, RLock
 from time import sleep, time
 from dataclasses import dataclass
+from bs4 import BeautifulSoup
 
 from requests import get
 
 from much import Fetcher
 
 from .Thread import Thread
-from .util import normalize
+from .util import normalize, normalize_spaces
 
 
 CATALOG_URL = 'https://2ch.hk/b/catalog.json'
@@ -49,7 +50,7 @@ class CacheEntry:
 
 class UserHub(ABC):  # stateless platform-dependent methods
 
-    def __init__(self, n_threads_per_response: int = 5, n_chars_per_response = 5000, post_sep_length: int = 0, timeout: int = 60, overlap: int = 2):
+    def __init__(self, n_threads_per_response: int = 5, n_chars_per_response = 5000, post_sep_length: int = 0, timeout: int = 60, overlap: int = 2, disabled_thread_starters: tuple[str] = None):
         self.n_threads_per_response = n_threads_per_response
         self.n_chars_per_response = n_chars_per_response
         self.post_sep_length = post_sep_length
@@ -61,6 +62,7 @@ class UserHub(ABC):  # stateless platform-dependent methods
         self._cached_post_lists = {}  # None
         # self._cached_post_lists = {'foo': CacheEntry(['bar', 'baz'], time())}
         self._cached_post_lists_lock = RLock()
+        self.disabled_thread_starters = disabled_thread_starters
 
         self.cleanup_thread = cleanup_thread = ExecutableThread(target = cleanup_cached_post_lists, args = (self, ))
         cleanup_thread.start()
@@ -105,7 +107,31 @@ class UserHub(ABC):  # stateless platform-dependent methods
         if (status_code := response.status_code) != HTTP_SUCCESS:
             raise ValueError(f'Can\'t pull threads, response status code is {status_code}')
 
-        return sorted(Thread.from_list(response.json()['threads']), key = lambda thread: (thread.length, thread.freshness), reverse = reverse)[skip_first_n:]
+        # print(
+        #     len([
+        #         normalize_spaces(BeautifulSoup(thread['comment'], 'lxml').get_text().strip())
+        #         for thread in response.json()['threads']
+        #         if any(
+        #             normalize_spaces(BeautifulSoup(thread['comment'], 'lxml').get_text().lower().strip()).startswith(disabled_thread_starter)
+        #             for disabled_thread_starter in self.disabled_thread_starters
+        #         )
+        #     ])
+        # )
+
+        return sorted(
+            Thread.from_list(
+                [
+                    thread
+                    for thread in response.json()['threads']
+                    if not any(
+                        normalize_spaces(BeautifulSoup(thread['comment'], 'lxml').get_text().lower().strip()).startswith(disabled_thread_starter)
+                        for disabled_thread_starter in self.disabled_thread_starters
+                    )
+                ]
+            ),
+            key = lambda thread: (thread.length, thread.freshness),
+            reverse = reverse
+        )[skip_first_n:]
 
     def should_reset_threads(self, utterance: str):
         return 'хочу' in utterance

@@ -1,1 +1,1 @@
-from .string import normalize
+from .string import normalize, normalize_spaces

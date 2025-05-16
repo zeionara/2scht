@@ -14,7 +14,7 @@ OFFSET = 100
 
 
 class Server:
-    def __init__(self, verbose: bool = False, callback: bool = False):
+    def __init__(self, verbose: bool = False, callback: bool = False, disabled_thread_starters: str = None):
         self.app = Flask('2scht speech skill server')
         self.fetcher = Fetcher()
         self.verbose = verbose
@@ -22,9 +22,13 @@ class Server:
 
         json.provider.DefaultJSONProvider.ensure_ascii = False
 
-        self.sber = SberUserHub()
-        self.vk = VkUserHub(callback = callback)
-        self.yandex = YandexUserHub()
+        if disabled_thread_starters is not None:
+            with open(disabled_thread_starters, 'r', encoding = 'utf-8') as file:
+                disabled_thread_starters = [line[:-1] for line in file.readlines()]
+
+        self.sber = SberUserHub(disabled_thread_starters = disabled_thread_starters)
+        self.vk = VkUserHub(callback = callback, disabled_thread_starters = disabled_thread_starters)
+        self.yandex = YandexUserHub(disabled_thread_starters = disabled_thread_starters)
 
     def serve(self, host: str = '0.0.0.0', port = DEFAULT_PORT):
         app = self.app
