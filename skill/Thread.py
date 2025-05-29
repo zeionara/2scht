@@ -34,7 +34,7 @@ class Thread:
 
     @property
     def link(self):
-        return f'https://2ch.hk/b/res/{self.id}.html'
+        return f'https://2ch.su/b/res/{self.id}.html'
 
     @classmethod
     def from_list(cls, items: list):

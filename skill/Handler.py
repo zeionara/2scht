@@ -13,7 +13,7 @@ from .Thread import Thread
 from .util import normalize, normalize_spaces
 
 
-CATALOG_URL = 'https://2ch.hk/b/catalog.json'
+CATALOG_URL = 'https://2ch.su/b/catalog.json'
 HTTP_SUCCESS = 200
 CLEANUP_INTERVAL = 3600
 CLEANUP_TIMEOUT = 3600
