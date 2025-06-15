@@ -50,9 +50,13 @@ class CacheEntry:
 
 class UserHub(ABC):  # stateless platform-dependent methods
 
-    def __init__(self, n_threads_per_response: int = 5, n_chars_per_response = 5000, post_sep_length: int = 0, timeout: int = 60, overlap: int = 2, disabled_thread_starters: tuple[str] = None):
+    def __init__(self,
+        n_threads_per_response: int = 5, n_chars_per_response = 5000, post_sep_length: int = 0, timeout: int = 60, overlap: int = 2, disabled_thread_starters: tuple[str] = None,
+        n_chars_per_overlap_post: int = None
+    ):
         self.n_threads_per_response = n_threads_per_response
         self.n_chars_per_response = n_chars_per_response
+        self.n_chars_per_overlap_post = n_chars_per_overlap_post
         self.post_sep_length = post_sep_length
         self.timeout = timeout
         self.overlap = overlap
@@ -240,21 +244,28 @@ class Handler:  # stateful platform-independent methods
 
         posts = self._hub.get_posts(threads[index])
         overlap = self._hub.overlap
+        n_chars_per_overlap_post = self._hub.n_chars_per_overlap_post
 
         # print(self._hub.overlap)
 
         if distance is not None:
+            # print('distance:', distance)
+
             if distance >= len(posts):
                 return None, None
 
             posts = posts[max(0, distance - overlap):]
 
-            shift = 0  # skip n posts in the beginning if they are too large to not to stuck with them
+            if n_chars_per_overlap_post is None:
+                shift = 0  # skip n posts in the beginning if they are too large to not to stuck with them
 
-            while sum(len(post) for post in posts[shift:overlap]) > self._hub.n_chars_per_response:
-                shift += 1
+                while sum(len(post) for post in posts[shift:overlap]) > self._hub.n_chars_per_response:
+                    shift += 1
 
-            posts = posts[shift:]
+                posts = posts[shift:]
+            else:
+                for i in range(overlap):
+                    posts[i] = posts[i][:n_chars_per_overlap_post]
 
         # if distance is None:
         #     for post, i in enumerate(posts):
@@ -266,9 +277,14 @@ class Handler:  # stateful platform-independent methods
         for post in posts:
             n_chars += len(post)
 
-            if n_chars < (self._hub.n_chars_per_response + self._hub.post_sep_length * len(top_posts)):
+            # print(n_chars, self._hub.n_chars_per_response)
+            # print(n_chars, self._hub.n_chars_per_response + self._hub.post_sep_length * len(top_posts))
+
+            if (n_chars + self._hub.post_sep_length * len(top_posts)) < self._hub.n_chars_per_response:
                 top_posts.append(post)
             else:
+                # print('too many chars')
+
                 if len(top_posts) < 1:
                     top_posts.append(post[:self._hub.n_chars_per_response])
                 elif len(top_posts) > 1:

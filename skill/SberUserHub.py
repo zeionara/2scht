@@ -6,13 +6,16 @@ POST_SEP = ' <break time="1500ms"/> '
 class SberUserHub(UserHub):
 
     def __init__(self, *args, n_threads_per_response: int = 10, n_chars_per_response = 4000, **kwargs):
-        super().__init__(*args, n_threads_per_response = n_threads_per_response, n_chars_per_response = n_chars_per_response, post_sep_length = len(POST_SEP), **kwargs)
+        super().__init__(
+            *args, n_threads_per_response = n_threads_per_response, n_chars_per_response = n_chars_per_response, post_sep_length = len(POST_SEP), n_chars_per_overlap_post = 100,
+            **kwargs
+        )
 
     def should_reset_threads(self, utterance: str):
         return 'хотеть' in utterance
 
     def should_continue(self, utterance: str):
-        return 'далекий' in utterance or 'скилл' in utterance or 'skill' in utterance
+        return 'далекий' in utterance or 'скил' in utterance or 'skill' in utterance
 
     def should_repeat(self, utterance: str):
         return 'поиграть' in utterance
@@ -24,6 +27,8 @@ class SberUserHub(UserHub):
         return 'нужный' in utterance
 
     def infer_index(self, utterance: str):
+        if '10' in utterance:
+            return 9
         if '1' in utterance:
             return 0
         if '2' in utterance:
@@ -42,8 +47,6 @@ class SberUserHub(UserHub):
             return 7
         if '9' in utterance:
             return 8
-        if '10' in utterance:
-            return 9
 
         return None
 
@@ -57,7 +60,8 @@ class SberUserHub(UserHub):
 
         # print(posts)
 
-        return self.make_response(request, '\n'.join(posts), POST_SEP.join(posts)[:self.n_chars_per_response])
+        # return self.make_response(request, '\n'.join(posts), POST_SEP.join(posts)[:self.n_chars_per_response])
+        return self.make_response(request, '\n'.join(posts), POST_SEP.join(posts))
 
     def make_response(self, request: dict, text: str, ssml: str = None, interactive: bool = True):
         payload = request.get('payload', {})
@@ -66,6 +70,13 @@ class SberUserHub(UserHub):
             print(f'Response length (text) is {len(text)}')
         else:
             print(f'Response length (ssml) is {len(ssml)}')
+
+        print(text, len(text))
+        print(ssml, len(ssml))
+
+        # print()
+        # print(ssml)
+        # ssml = None
 
         return {
             "sessionId": request.get('sessionId'),
