@@ -1,4 +1,6 @@
 from __future__ import annotations
+
+import re
 from abc import ABC, abstractmethod
 from threading import Thread as ExecutableThread, RLock
 from time import sleep, time
@@ -17,6 +19,10 @@ CATALOG_URL = 'https://2ch.su/b/catalog.json'
 HTTP_SUCCESS = 200
 CLEANUP_INTERVAL = 3600
 CLEANUP_TIMEOUT = 3600
+POST_ELEMENT_SEP_MARK = ' @ '
+
+POST_ELEMENT_SEP_MARK_SEQUENCE_PATTERN = re.compile(r'\s+(@+\s*)+\s+')
+POST_ELEMENT_SEP_MARK_START_SEQUENCE_PATTERN = re.compile(r'^\s*(@+\s*)+\s+')
 
 HELP_TEXT = (
     'Я могу озвучивать треды с двача. '
@@ -51,13 +57,16 @@ class CacheEntry:
 class UserHub(ABC):  # stateless platform-dependent methods
 
     def __init__(self,
-        n_threads_per_response: int = 5, n_chars_per_response = 5000, post_sep_length: int = 0, timeout: int = 60, overlap: int = 2, disabled_thread_starters: tuple[str] = None,
+        n_threads_per_response: int = 5, n_chars_per_response = 5000,
+        post_sep_length: int = 0, post_element_sep_length: int = 0,
+        timeout: int = 60, overlap: int = 2, disabled_thread_starters: tuple[str] = None,
         n_chars_per_overlap_post: int = None
     ):
         self.n_threads_per_response = n_threads_per_response
         self.n_chars_per_response = n_chars_per_response
         self.n_chars_per_overlap_post = n_chars_per_overlap_post
         self.post_sep_length = post_sep_length
+        self.post_element_sep_length = post_element_sep_length
         self.timeout = timeout
         self.overlap = overlap
 
@@ -70,6 +79,15 @@ class UserHub(ABC):  # stateless platform-dependent methods
 
         self.cleanup_thread = cleanup_thread = ExecutableThread(target = cleanup_cached_post_lists, args = (self, ))
         cleanup_thread.start()
+
+    def fix(self, post: str):
+        return POST_ELEMENT_SEP_MARK_START_SEQUENCE_PATTERN.sub(
+            '',
+            POST_ELEMENT_SEP_MARK_SEQUENCE_PATTERN.sub(
+                POST_ELEMENT_SEP_MARK,
+                post
+            )
+        )
 
     def handle(self, request: dict):
         user_id = self.get_user_id(request)
@@ -242,9 +260,14 @@ class Handler:  # stateful platform-independent methods
         if (threads := self._threads) is None:
             raise ValueError('Threads are not initialized')
 
-        posts = self._hub.get_posts(threads[index])
-        overlap = self._hub.overlap
-        n_chars_per_overlap_post = self._hub.n_chars_per_overlap_post
+        hub = self._hub
+
+        posts = hub.get_posts(threads[index])
+        overlap = hub.overlap
+        n_chars_per_overlap_post = hub.n_chars_per_overlap_post
+
+        post_sep_length = hub.post_sep_length
+        post_element_sep_length = hub.post_element_sep_length
 
         # print(self._hub.overlap)
 
@@ -259,7 +282,7 @@ class Handler:  # stateful platform-independent methods
             if n_chars_per_overlap_post is None:
                 shift = 0  # skip n posts in the beginning if they are too large to not to stuck with them
 
-                while sum(len(post) for post in posts[shift:overlap]) > self._hub.n_chars_per_response:
+                while sum(len(post) for post in posts[shift:overlap]) > hub.n_chars_per_response:
                     shift += 1
 
                 posts = posts[shift:]
@@ -275,20 +298,30 @@ class Handler:  # stateful platform-independent methods
         top_posts = []
 
         for post in posts:
+            post = hub.fix(post)
+
             n_chars += len(post)
 
             # print(n_chars, self._hub.n_chars_per_response)
             # print(n_chars, self._hub.n_chars_per_response + self._hub.post_sep_length * len(top_posts))
+            # print(n_chars, len(top_posts), len(' '.join(top_posts).split(POST_ELEMENT_SEP_MARK)) - 1, post_sep_length, post_element_sep_length)
 
-            if (n_chars + self._hub.post_sep_length * len(top_posts)) < self._hub.n_chars_per_response:
+            if (
+                n_chars +
+                post_sep_length * len(top_posts) +
+                post_element_sep_length * (len(' '.join([*top_posts, post]).split(POST_ELEMENT_SEP_MARK)) - 1)
+            ) < self._hub.n_chars_per_response:
                 top_posts.append(post)
             else:
                 # print('too many chars')
 
                 if len(top_posts) < 1:
-                    top_posts.append(post[:self._hub.n_chars_per_response])
-                elif len(top_posts) > 1:
-                    top_posts = top_posts[:-1]
+                    post = post[:n_chars_per_response]
+                    post = post[:-(post_element_sep_length * (len(post.split(POST_ELEMENT_SEP_MARK)) - 1))]
+
+                    top_posts.append(post)
+                # elif len(top_posts) > 1:
+                #     top_posts = top_posts[:-1]
 
                 break
 
@@ -396,15 +429,41 @@ class Handler:  # stateful platform-independent methods
         # for i in range(offset, offset + self._hub.n_threads_per_response):
         for i in range(self._hub.n_threads_per_response):
             next_thread = f'Тред номер {i + 1}. {normalize(threads[offset + i].title_text)}.'
-
-            if len(thread_headers) > 0:
-                if thread_headers_len + len(next_thread) > self._hub.n_chars_per_response:
-                    break
-            elif len(next_thread) > self._hub.n_chars_per_response:
-                next_thread = next_thread[:self._hub.n_chars_per_response]
-
-            thread_headers.append(next_thread)
             thread_headers_len += len(next_thread)
+
+            # print(thread_headers_len, len(thread_headers), len(' '.join(thread_headers).split(POST_ELEMENT_SEP_MARK)) - 1, self._hub.post_sep_length, self._hub.post_element_sep_length)
+
+            if (
+                thread_headers_len +
+                self._hub.post_sep_length * len(thread_headers) +
+                self._hub.post_element_sep_length * (len(' '.join([*thread_headers, next_thread]).split(POST_ELEMENT_SEP_MARK)) - 1)
+            ) < self._hub.n_chars_per_response:
+                thread_headers.append(next_thread)
+            else:
+                if len(thread_headers) < 1:
+                    next_thread = next_thread[:self._hub.n_chars_per_response]
+                    next_thread = next_thread[:-(self._hub.post_element_sep_length * (len(next_thread.split(POST_ELEMENT_SEP_MARK)) - 1))]
+
+                    thread_headers.append(next_thread)
+                # elif len(top_posts) > 1:
+                #     top_posts = top_posts[:-1]
+
+                break
+
+            # if len(thread_headers) > 0:
+            #     # if thread_headers_len + len(next_thread) > self._hub.n_chars_per_response:
+            #     if (
+            #         thread_headers_len +
+            #         self._hub.post_sep_length * (len(thread_headers) - 1) +
+            #         self._hub.post_element_sep_length * (len(' '.join(thread_headers).split(POST_ELEMENT_SEP_MARK)) - 1)
+            #     ) > self._hub.n_chars_per_response:
+            #         break
+            # elif len(next_thread) > self._hub.n_chars_per_response:
+            #     next_thread = next_thread[:self._hub.n_chars_per_response]
+            #     next_thread = next_thread[:-(self._hub.post_element_sep_length * (len(next_thread.split(POST_ELEMENT_SEP_MARK)) - 1))]
+
+            # thread_headers.append(next_thread)
+            # thread_headers_len += len(next_thread)
 
         self._last_batch_size = len(thread_headers)
 

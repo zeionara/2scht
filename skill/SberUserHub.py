@@ -1,15 +1,21 @@
-from .Handler import UserHub
+from .Handler import UserHub, POST_ELEMENT_SEP_MARK
 
 POST_SEP = ' <break time="1500ms"/> '
+POST_ELEMENT_SEP = ' <break time="500ms"/> '
 
 
 class SberUserHub(UserHub):
 
     def __init__(self, *args, n_threads_per_response: int = 10, n_chars_per_response = 4000, **kwargs):
         super().__init__(
-            *args, n_threads_per_response = n_threads_per_response, n_chars_per_response = n_chars_per_response, post_sep_length = len(POST_SEP), n_chars_per_overlap_post = 100,
+            *args, n_threads_per_response = n_threads_per_response, n_chars_per_response = n_chars_per_response,
+            post_sep_length = len(POST_SEP), post_element_sep_length = len(POST_ELEMENT_SEP) - 1,  # 1 character matches the '@' symbol in post body
+            n_chars_per_overlap_post = 100,
             **kwargs
         )
+
+    # def fix(self, post: str):
+    #     return post.replace('@', '<break time="500ms"/>')
 
     def should_reset_threads(self, utterance: str):
         return 'хотеть' in utterance
@@ -61,7 +67,7 @@ class SberUserHub(UserHub):
         # print(posts)
 
         # return self.make_response(request, '\n'.join(posts), POST_SEP.join(posts)[:self.n_chars_per_response])
-        return self.make_response(request, '\n'.join(posts), POST_SEP.join(posts))
+        return self.make_response(request, '\n'.join(posts), POST_SEP.join([post.replace(POST_ELEMENT_SEP_MARK, POST_ELEMENT_SEP) for post in posts]))
 
     def make_response(self, request: dict, text: str, ssml: str = None, interactive: bool = True):
         payload = request.get('payload', {})
@@ -72,7 +78,8 @@ class SberUserHub(UserHub):
             print(f'Response length (ssml) is {len(ssml)}')
 
         print(text, len(text))
-        print(ssml, len(ssml))
+        if ssml is not None:
+            print(ssml, len(ssml))
 
         # print()
         # print(ssml)
