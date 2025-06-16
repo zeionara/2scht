@@ -108,11 +108,22 @@ class UserHub(ABC):  # stateless platform-dependent methods
             if (cached_post_lists := self._cached_post_lists) is not None and (cached_posts := cached_post_lists.get(thread_id)) is not None:
                 all_posts = cached_posts.posts
             else:
-                all_posts = [normalize(thread.title_text)] + [
-                    normalize(post)
-                    for topic in self._fetcher.fetch(thread.link, verbose = True)
-                    for post in topic.comments
-                ]
+                # all_posts = [normalize(thread.title_text)]
+                all_posts = []
+
+                for topic in self._fetcher.fetch(thread.link, verbose = True):
+                    all_posts.append(normalize(topic.title))
+
+                    for post in topic.comments:
+                        all_posts.append(normalize(post))
+
+                # [
+                #     normalize(post)
+                #     for topic in self._fetcher.fetch(thread.link, verbose = True)
+                #     for post in topic.comments
+                # ]
+
+                # print(all_posts)
 
                 if self._cached_post_lists is None:
                     self._cached_post_lists = {thread_id: CacheEntry(all_posts, time())}
