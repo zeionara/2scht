@@ -91,7 +91,7 @@ class SberUserHub(UserHub):
             "uuid": request.get('uuid'),
             "messageName": "ANSWER_TO_USER",
             "payload": {
-                "pronounceText": text if ssml is None else ssml,  # "Купил мужик шляпу, а она ему как раз",
+                "pronounceText": (text if ssml is None else ssml)[:self.n_chars_per_response],  # "Купил мужик шляпу, а она ему как раз",
                 "pronounceTextType": "application/text" if ssml is None else 'application/ssml',
                 "emotion": {
                     "emotionId": "laugh"

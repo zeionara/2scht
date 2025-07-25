@@ -324,13 +324,15 @@ class Handler:  # stateful platform-independent methods
             ) < self._hub.n_chars_per_response:
                 top_posts.append(post)
             else:
-                # print('too many chars')
+                if len(top_posts) <= overlap:
+                    post = post[:self._hub.n_chars_per_response - sum(len(top_post) for top_post in top_posts)]
 
-                if len(top_posts) < 1:
-                    post = post[:n_chars_per_response]
-                    post = post[:-(post_element_sep_length * (len(post.split(POST_ELEMENT_SEP_MARK)) - 1))]
+                    sep_mark_fix = post_element_sep_length * (len(post.split(POST_ELEMENT_SEP_MARK)) - 1)
+                    if sep_mark_fix > 0:
+                        post = post[:-(post_element_sep_length * (len(post.split(POST_ELEMENT_SEP_MARK)) - 1))]
 
                     top_posts.append(post)
+
                 # elif len(top_posts) > 1:
                 #     top_posts = top_posts[:-1]
 
